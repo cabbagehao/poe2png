@@ -132,11 +132,15 @@ async function exportToPDF() {
       throw new Error('未找到聊天容器');
     }
 
+    // 使用实际容器宽度而非固定宽度，像PNG导出一样
+    const containerWidth = chatContainer.offsetWidth;
+    console.log('实际容器宽度:', containerWidth);
+    
     // 创建临时容器
     const tempContainer = document.createElement('div');
     tempContainer.style.cssText = `
       background: white;
-      width: 1200px;
+      width: ${containerWidth}px;
       position: relative;
       overflow: visible;
       margin: 0 auto;
@@ -197,18 +201,19 @@ async function exportToPDF() {
       if (content) {
         content.style.cssText = `
           white-space: normal;
-          word-break: normal;
-          overflow-wrap: normal;
+          word-break: break-word;
+          overflow-wrap: break-word;
           font-size: 16px;
           line-height: 24px;
+          max-width: 100%;
         `;
        
         // 处理代码块
         content.querySelectorAll('pre').forEach(pre => {
           pre.style.cssText = `
             max-width: 100%;
-            overflow-x: auto;
-            white-space: pre;
+            overflow-x: hidden;
+            white-space: pre-wrap;
             font-family: monospace;
             background-color: rgb(247, 247, 247);
             border-radius: 8px;
@@ -234,6 +239,28 @@ async function exportToPDF() {
             margin: 0;
             padding: 0;
             white-space: normal;
+            max-width: 100%;
+          `;
+        });
+        
+        // 处理图片
+        content.querySelectorAll('img').forEach(img => {
+          img.style.cssText = `
+            max-width: 100%;
+            height: auto;
+            display: block;
+            margin: 8px 0;
+          `;
+        });
+        
+        // 处理表格
+        content.querySelectorAll('table').forEach(table => {
+          table.style.cssText = `
+            max-width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 14px;
+            border: 1px solid #ddd;
           `;
         });
       }
@@ -243,6 +270,12 @@ async function exportToPDF() {
 
       // 消息内容选择器
       const messageContent = msg.querySelector('[class^="ChatMessage_messageContent"]');
+      if (messageContent) {
+        messageContent.style.cssText = `
+          max-width: 100%;
+          width: 100%;
+        `;
+      }
 
       // 消息容器选择器
       const chatMessage = msg.querySelector('[class^="ChatMessage_chatMessage"]');
@@ -256,6 +289,15 @@ async function exportToPDF() {
     document.body.appendChild(tempContainer);
     console.log('临时容器已添加到文档');
 
+    // 确定适合的PDF格式
+    let pdfFormat;
+    if (containerWidth > 595) { // A4宽度为595pt
+      pdfFormat = [containerWidth + 60, Math.round((containerWidth + 60) * 1.414)]; // A4比例 1:1.414
+    } else {
+      pdfFormat = 'a4';
+    }
+    console.log('使用PDF格式:', pdfFormat);
+
     // 使用html2pdf导出
     const opt = {
       margin: [40, 30, 40, 30],
@@ -266,22 +308,40 @@ async function exportToPDF() {
         useCORS: true,
         letterRendering: true,
         backgroundColor: '#ffffff',
-        width: 1200,
-        windowWidth: 1200,
+        width: containerWidth,
+        windowWidth: containerWidth,
+        height: Math.max(tempContainer.scrollHeight, tempContainer.offsetHeight),
         onclone: function(clonedDoc) {
           // 在克隆的文档中应用额外的样式修复
           const style = clonedDoc.createElement('style');
           style.textContent = `
             [class^="Markdown_markdownContainer"] {
               white-space: normal !important;
-              word-break: normal !important;
-              overflow-wrap: normal !important;
+              word-break: break-word !important;
+              overflow-wrap: break-word !important;
+              max-width: 100% !important;
             }
             [class^="Markdown_markdownContainer"] p {
               white-space: normal !important;
+              max-width: 100% !important;
             }
             [class^="Markdown_markdownContainer"] pre {
-              white-space: pre !important;
+              white-space: pre-wrap !important;
+              max-width: 100% !important;
+              overflow-x: hidden !important;
+            }
+            [class^="ChatMessage_messageContent"] {
+              max-width: 100% !important;
+              width: 100% !important;
+            }
+            img, svg {
+              max-width: 100% !important;
+              height: auto !important;
+            }
+            table {
+              max-width: 100% !important;
+              display: block;
+              overflow-x: auto;
             }
           `;
           clonedDoc.head.appendChild(style);
@@ -289,7 +349,7 @@ async function exportToPDF() {
       },
       jsPDF: {
         unit: 'pt',
-        format: [1200, 842],
+        format: pdfFormat,
         orientation: 'portrait',
         hotfixes: ['px_scaling']
       },
